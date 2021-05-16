@@ -1,0 +1,5 @@
+GIBBS = "gibbs"
+VARMAP = "varmap"
+VARBERNOULLI = "varmap"
+GEN = "gen"
+NEGATIVE = "NEGATIVE"
