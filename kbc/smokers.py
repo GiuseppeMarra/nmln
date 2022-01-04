@@ -1,7 +1,7 @@
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
-import datasets
+from nmln.utils import ntp_dataset
 import numpy as np
 from itertools import combinations,product,permutations
 import tensorflow as tf
@@ -16,69 +16,10 @@ if gpus:
   except RuntimeError as e:
     # Memory growth must be set before GPUs have been initialized
     print(e)
-import mme
+import nmln
 
 
 inter_sample_burn = 1
-
-
-def check_for_duplicates(l):
-    s = set()
-    for i in l:
-        if i in s:
-            return True
-        else:
-            s.add(i)
-    return False
-
-
-def key(i,j):
-    return min(i,j), max(i,j)
-
-class Fragment():
-
-    def __init__(self, i, j):
-
-        self.i = min(i,j)
-        self.j = max(i,j)
-        self.rels_ij = []
-        self.rels_ji = []
-
-    def add_rel(self, h, t, r):
-        if h<t:
-            self.rels_ij.append(int(r))
-        else:
-            self.rels_ji.append(int(r))
-
-    def exists_rel(self, h,t,r):
-        if h<t:
-            return r in self.rels_ij
-        else:
-            return r in self.rels_ji
-
-
-    def get_interpretation(self, depth):
-        i = np.zeros(depth).astype(np.int)
-        i[np.concatenate((2*np.array(self.rels_ij), 2*np.array(self.rels_ji) + 1), axis=0).astype(np.int)]=1
-        return i
-
-    def key(self):
-        return (self.i, self.j)
-
-
-class NTPLikeScoringFunction():
-
-    def __init__(self, marginal, ontology):
-        self.marginal = marginal
-        self.ontology = ontology
-
-    def __call__(self, corrupted):
-        scores = []
-        for h,r,t in corrupted:
-            size = self.ontology.predicates[r].domains[0].num_constants
-            scores.append(self.marginal[0, self.ontology._predicate_range[r][0] + h * size + t])
-        return scores
-
 
 
 
@@ -86,24 +27,24 @@ class NTPLikeScoringFunction():
 def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips):
 
     # Loading the dataset. Each split is a list of triples <h,r,t>
-    constants, predicates, ground, train, valid, test = datasets.ntp_dataset(dataset)
+    constants, predicates, ground, train, valid, test = ntp_dataset(dataset, "../data")
 
 
     np.random.seed(0)
     tf.random.set_seed(0)
 
 
-    d = mme.Domain("domains", num_constants=len(constants), constants=constants)
-    p1 = mme.Predicate(name="friendOf", domains=[d,d]) #friends
-    p2 = mme.Predicate(name="smokes", domains=[d])
-    o = mme.Ontology(domains=[d], predicates=[p1,p2])
+    d = nmln.Domain("domains", num_constants=len(constants), constants=constants)
+    p1 = nmln.Predicate(name="friendOf", domains=[d,d]) #friends
+    p2 = nmln.Predicate(name="smokes", domains=[d])
+    o = nmln.Ontology(domains=[d], predicates=[p1,p2])
 
 
 
     num_variables = sum([len(constants)**len(p.domains) for n,p in o.predicates.items()])
 
 
-    class KBCPotential(mme.potentials.Potential):
+    class KBCPotential(nmln.potentials.Potential):
 
         def __init__(self, k, ontology, hidden_layers, num_constants, embedding_size):
             super(KBCPotential, self).__init__()
@@ -139,7 +80,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips)
             a = tf.squeeze(self.model(input))  # remove potential value 1 dimension
             return tf.reduce_sum(a, axis=-1)  # aggregate fragments
 
-    class KBCPotentialNoConstantEmb(mme.potentials.Potential):
+    class KBCPotentialNoConstantEmb(nmln.potentials.Potential):
 
         def __init__(self, k, ontology, hidden_layers, num_constants):
             super(KBCPotentialNoConstantEmb, self).__init__()
@@ -165,7 +106,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips)
             a = tf.squeeze(self.model(input))  # remove potential value 1 dimension
             return tf.reduce_sum(a, axis=-1)  # aggregate fragments
 
-    y = train.astype(np.float32)
+    y = train.astype(np.bool)
 
     k = 3
     if embedding_size > 0:
@@ -173,7 +114,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips)
     else:
         P = KBCPotentialNoConstantEmb(k, o, hidden_layers, len(constants))
     P.beta = tf.ones(())
-    sampler = mme.inference.GPUGibbsSampler(potential=P,
+    sampler = nmln.inference.GPUGibbsSampler(potential=P,
                                             num_examples=1,
                                             num_variables=num_variables,
                                             num_chains=num_samples,
@@ -182,7 +123,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips)
 
 
     if embedding_size <= 0:
-        sampler_test = mme.inference.GPUGibbsSampler(potential=P,
+        sampler_test = nmln.inference.GPUGibbsSamplerBool(potential=P,
                                                 num_examples=1,
                                                 num_variables=num_variables,
                                                 num_chains=num_samples,
@@ -232,7 +173,16 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips)
             MARG += np.sum(samples, axis=1)
             M = MARG / ((i + 1) * num_samples)
             for n,p in o.predicates.items():
-                print(np.reshape(M[:, o._predicate_range[n][0]:o._predicate_range[n][1]], [d.num_constants for d in p.domains]))
+                if p.name == "friendOf":
+                    print("Predicate marginal table for relation friendOf (e.g. [i,j] = probability(friendOf(i,j)) " )
+                    print(np.reshape(M[:, o._predicate_range[n][0]:o._predicate_range[n][1]], [d.num_constants for d in p.domains]))
+                    print()
+                else:
+                    print(
+                        "Predicate marginal table for relation smokes (e.g. [i] = probability(smokes(i)) " )
+                    print(np.reshape(M[:, o._predicate_range[n][0]:o._predicate_range[n][1]],
+                                     [d.num_constants for d in p.domains]))
+                    print()
 
 
 
@@ -255,7 +205,8 @@ if __name__=="__main__":
         _, flips, dataset, num_samples,embedding_size,p_noise,lr, hidden_layers = A
         r = main(dataset,num_samples,embedding_size,p_noise,lr,hidden_layers,flips)
         RES.append((A, r))
-        for i in RES: print(i)
+        for i in RES:
+            print(i)
         with open("res_smokers", "a") as f:
             for i in RES:
                 f.write(str(i))

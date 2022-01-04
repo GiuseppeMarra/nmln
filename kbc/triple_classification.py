@@ -19,12 +19,11 @@ if gpus:
     print(e)
 import numpy as np
 import random
-import datasets
 from collections import OrderedDict
 from itertools import combinations,product
-import mme
+import nmln
 from kbc_utils import key, Fragment, get_connected_fragment_dict, get_disconnected_indices_coherent_corruption, get_disconnected_indices_random_corruption, get_all_fragments_dict, KBCTractablePotential, KBCTractablePotential2, KBCTractablePotentialWE, evaluate, new_new_evaluate, new_evaluate
-
+from nmln.utils import ntn_dataset_triple_we
 
 
 inter_sample_burn = 1
@@ -40,7 +39,7 @@ def main(dataset, minibatch_size, num_disconnected_negative_samples, num_samples
     tf.random.set_seed(SEED)
 
     # Loading the dataset. Each split is a list of triples <h,r,t>
-    constants, predicates, ground, train, valid, test, embeddings, bow, we  = datasets.ntn_dataset_triple_we(dataset)
+    constants, predicates, ground, train, valid, test, embeddings, bow, we  = ntn_dataset_triple_we(dataset, "../data/")
     num_variables = 2 * len(predicates)
 
 
@@ -88,7 +87,7 @@ def main(dataset, minibatch_size, num_disconnected_negative_samples, num_samples
     elif potential == 'WE': # todo this is not working
         P = KBCTractablePotentialWE(hidden_layers, len(constants), embedding_size=embedding_size, num_variables=num_variables, bow=bow, we=we)
     P.beta = tf.ones(()) # it is not needed in single potential distributions, it is already in the linear output of the net
-    sampler = mme.inference.GPUGibbsSamplerBool(potential=P,
+    sampler = nmln.inference.GPUGibbsSamplerBool(potential=P,
                                             num_examples=num_examples,
                                             num_variables=num_variables,
                                             num_chains=num_samples)
@@ -103,7 +102,7 @@ def main(dataset, minibatch_size, num_disconnected_negative_samples, num_samples
     eval_fragment_indices = np.array(list(eval_fragment_dict.keys()))
     eval_fragment_samples_indices = np.tile(np.expand_dims(eval_fragment_indices,axis=1), [1, num_samples, 1])
     key_to_fragment_index_ = {k:i for i,k in enumerate(eval_fragment_dict)}
-    sampler_eval = mme.inference.GPUGibbsSamplerBool(potential=P,
+    sampler_eval = nmln.inference.GPUGibbsSamplerBool(potential=P,
                                                 num_examples=len(eval_fragment_indices),
                                                 num_variables=num_variables,
                                                 num_chains=num_samples)
@@ -190,7 +189,7 @@ def main(dataset, minibatch_size, num_disconnected_negative_samples, num_samples
             if patience<0:
                 break
 
-        if mme.utils.heardEnter():
+        if nmln.utils.heardEnter():
             break
     test_res_old = evaluate(key_to_fragment_index_, test, M)
     print("TEST:", None, test_res_old)

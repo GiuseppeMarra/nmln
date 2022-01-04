@@ -1,7 +1,6 @@
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-import datasets
 import numpy as np
 from collections import OrderedDict
 from itertools import combinations,product
@@ -18,7 +17,8 @@ if gpus:
   except RuntimeError as e:
     # Memory growth must be set before GPUs have been initialized
     print(e)
-import mme
+import nmln
+from nmln.utils import ntp_dataset_triple
 
 
 
@@ -89,7 +89,7 @@ class NTPLikeScoringFunction():
 
 
 # This class parallelize the evaluations on all the fragments and their anonymization. It is ad-hoc for this setting
-class KBCTractablePotential(mme.potentials.Potential):
+class KBCTractablePotential(nmln.potentials.Potential):
 
     def __init__(self, hidden_layers, num_constants, embedding_size, num_variables):
         super(KBCTractablePotential, self).__init__()
@@ -124,7 +124,7 @@ class KBCTractablePotential(mme.potentials.Potential):
 def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers):
 
     # Loading the dataset. Each split is a list of triples <h,r,t>
-    constants, predicates, ground, train, valid, test = datasets.ntp_dataset_triple(dataset)
+    constants, predicates, ground, train, valid, test = ntp_dataset_triple(dataset, "../data")
     num_variables = 2 * len(predicates)
 
     np.random.seed(0)
@@ -161,7 +161,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers):
 
     P = KBCTractablePotential(hidden_layers, len(constants), embedding_size=embedding_size, num_variables=num_variables)
     P.beta = tf.ones(())
-    sampler = mme.inference.GPUGibbsSamplerBool(potential=P,
+    sampler = nmln.inference.GPUGibbsSamplerBool(potential=P,
                                             num_examples=num_examples,
                                             num_variables=num_variables,
                                             num_chains=num_samples)

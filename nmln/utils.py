@@ -6,6 +6,9 @@ from tensorflow.python.eager import context
 import re
 import warnings
 import functools
+from os.path import join
+from sortedcontainers import SortedDict
+from collections import OrderedDict
 
 
 if os.name == 'nt':
@@ -362,5 +365,243 @@ def generate_noise_coherent_with_transformations(transformations, pos_data, p_no
     return pos_data
 
 
-if __name__ == '__main__':
-    print(parse_atom("pred(con,con2)"))
+
+
+def __read_ntp_ontology_only(base_path, file):
+    file = join(base_path,file)
+    predicates = OrderedDict()
+    constants = OrderedDict()
+    with open(file) as f:
+        for line in f:
+            p,rest = line.split("(")
+            args = rest.split(")")[0].split(",")
+            for i in range(len(args)):
+                arg = args[i].replace(" ","")
+                args[i] = arg
+                if arg not in constants:
+                    constants[arg] = len(constants)
+            if p not in predicates:
+                predicates[p]=len(predicates)
+    return constants,predicates
+
+
+
+
+
+
+
+def __read_ntp_file_fixed_world(base_path, file, constants, predicates):
+    file = join(base_path,file)
+    data = SortedDict()
+    for p in predicates.keys():
+        data[p] = []
+    with open(file) as f:
+        for line in f:
+            p, rest = line.split("(")
+            args = rest.split(")")[0].split(",")
+            for i in range(len(args)):
+                arg = args[i].replace(" ","")
+                args[i] = arg
+            try:
+                if len(data[p])>0: assert(len(data[p][0]) == len(args))
+            except:
+                print(file)
+            data[p].append(args)
+    m_data = SortedDict()
+    for key in sorted(data.keys()):
+        k = key
+        v = data[k]
+        m_data[k] = np.zeros(shape=[len(constants) for _ in range(len(data[k][0]))])
+        for args in v:
+            id = [constants[a] for a in args]
+            np.put(m_data[k], np.ravel_multi_index(id, m_data[k].shape), 1)
+
+    return constants,m_data,{}
+
+def ntp_dataset(name, base_path):
+
+    ground_path = join(name, name+".nl")
+    train_path = join(name, "train.nl")
+    valid_path = join(name, "dev.nl")
+    test_path = join(name, "test.nl")
+
+
+
+    constants, predicates = __read_ntp_ontology_only(base_path, ground_path)
+    _, ground_relations, _ = __read_ntp_file_fixed_world(base_path, ground_path, constants, predicates)
+    _, train_relations, _ = __read_ntp_file_fixed_world(base_path, train_path, constants, predicates)
+    _, valid_relations, _ = __read_ntp_file_fixed_world(base_path, valid_path, constants, predicates)
+    _, test_relations, _ = __read_ntp_file_fixed_world(base_path, test_path, constants, predicates)
+
+
+    def to_linear(relations):
+        return np.reshape(np.concatenate([np.reshape(t, [-1]) for k,t in relations.items()], axis=0),[1, -1])
+
+    return constants, predicates, to_linear(ground_relations), to_linear(train_relations), valid_relations, test_relations
+
+
+def __read_ntp_file_triple(base_path, file, constants, predicates):
+    file = join(base_path,file)
+
+    # We initialize a dictionary <PredicateName, List_of_Tuples_of_Constants_keys>
+    data = []
+
+
+    with open(file) as f:
+        for line in f:
+            p, rest = line.split("(")
+            args = rest.split(")")[0].split(",")
+            for i in range(len(args)):
+                arg = args[i].replace(" ","")
+                arg = constants[arg]
+                args[i] = arg
+            data.append((args[0], predicates[p], args[1]))
+
+
+    return data
+
+
+def ntp_dataset_triple(name, base_path):
+
+    ground_path = join(name, name+".nl")
+    train_path = join(name, "train.nl")
+    valid_path = join(name, "dev.nl")
+    test_path = join(name, "test.nl")
+
+
+
+    constants, predicates = __read_ntp_ontology_only(base_path,train_path)
+    ground_facts = __read_ntp_file_triple(base_path,ground_path, constants, predicates)
+    train_facts = __read_ntp_file_triple(base_path,train_path, constants, predicates)
+    valid_facts = __read_ntp_file_triple(base_path,valid_path, constants, predicates)
+    test_facts = __read_ntp_file_triple(base_path,test_path, constants, predicates)
+
+
+    return constants, predicates, ground_facts, train_facts, valid_facts, test_facts
+
+
+
+def ntn_dataset_triple_we(dataset, base_path):
+
+    if dataset == "wn":
+        name = "WordnetNTN"
+    elif dataset == "fb":
+        name = "FreebaseNTN"
+    else:
+        raise Exception("Dataset unknown for ntn_dataset_triple")
+
+    data_path = join(base_path, name)
+
+    def __read_ontology():
+        constants_file_path = join(data_path, "entities.txt")
+        relations_file_path = join(data_path, "relations.txt")
+        predicates = OrderedDict()
+        constants = OrderedDict()
+
+        # Constants
+        with open(constants_file_path) as f:
+            for line in f:
+                arg = line.replace("\n", "")
+                if arg not in constants:
+                    constants[arg] = len(constants)
+
+        with open(relations_file_path) as f:
+            for line in f:
+                arg = line.replace("\n", "")
+                if arg not in predicates:
+                        predicates[arg] = len(predicates)
+
+        return constants, predicates
+
+
+    def __inner__(split_path, constants, predicates, is_eval=False):
+        triples = []
+        if is_eval:
+            corrupted_triples = []
+        with open(split_path) as f:
+            for line in f:
+                splits = line.split("\t")
+                splits = [s.strip() for s in splits]
+                triple = (constants[splits[0]], predicates[splits[1]], constants[splits[2]])
+                if is_eval and "-1" in splits[3]:
+                    corrupted_triples.append(triple)
+                else:
+                    triples.append(triple)
+
+        if is_eval:
+            triples = triples + corrupted_triples
+        return triples
+
+    def load_embeddings(embed_path, constants):
+
+        embed_dict = sio.loadmat(embed_path)
+        words = embed_dict["words"][0]
+        we = embed_dict["We"].T
+
+        words_to_idx = {}
+        WE = []
+
+        PAD = "<<PAD>>"
+        words = np.concatenate(([PAD], words), axis=0)
+        we = np.concatenate((np.zeros([1, len(we[0])]), we), axis=0)
+        words_to_idx[PAD] = 0
+        WE.append(we[0])
+
+        UNK = "*unknown*"
+
+        for j in range(1, len(words)):
+            w = words[j]
+            if w[0] not in words_to_idx:
+                words_to_idx[w[0]] = len(words_to_idx)
+                WE.append(we[j])
+
+
+
+        num_words = len(words_to_idx)
+        constants_embeddings = []
+        constants_bow = []
+
+        max_l = 0
+        for jh, c in enumerate(constants):
+            ws = c.replace("__","").split("_")
+            if len(ws) > 1:
+                ws = ws[:-1]
+            e = []
+            max_l = max(max_l, len(ws))
+            constants_bow.append([])
+            for w in ws:
+                w = w if w in words_to_idx else UNK
+                e.append(WE[words_to_idx[w]])
+                constants_bow[-1].append(words_to_idx[w])
+
+
+            constants_embeddings.append(np.mean(e, axis=0))
+
+        for i in range(len(constants_bow)):
+            constants_bow[i] = np.array(constants_bow[i] + [words_to_idx[PAD] for _ in range(max_l - len(constants_bow[i]))])
+
+        constants_bow = np.array(constants_bow)
+        return np.array(constants_embeddings).astype(np.float32) , constants_bow, np.array(WE).astype(np.float32)
+        # return np.array(constants_embeddings).astype(np.float32), None, None
+
+    train_path = join(data_path, "train.txt")
+    valid_path = join(data_path, "dev.txt")
+    test_path = join(data_path, "test.txt")
+    embed_path = join(data_path, "initEmbed")
+
+
+
+    constants, predicates = __read_ontology()
+    train_facts = __inner__(train_path, constants, predicates)
+    valid_facts = __inner__(valid_path, constants, predicates, is_eval=True)
+    test_facts = __inner__(test_path, constants, predicates, is_eval=True)
+
+    embeddings, bow, we = load_embeddings(embed_path, constants)
+    # embeddings, bow, we = None, None, None
+
+    ground_facts = train_facts + valid_facts[:len(valid_facts)//2] + test_facts[:len(test_facts)//2]
+
+
+    return constants, predicates, ground_facts, train_facts, valid_facts, test_facts, embeddings, bow, we
+
+

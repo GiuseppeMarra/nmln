@@ -5,7 +5,6 @@ gpus = tf.config.experimental.list_physical_devices('GPU')
 if gpus:
     for gpu in gpus:
         tf.config.experimental.set_memory_growth(gpu, True)
-import datasets
 import numpy as np
 import nmln
 from molecules.utils import MoleculesHandler, MoleculesLogger

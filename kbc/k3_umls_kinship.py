@@ -1,7 +1,6 @@
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-import datasets
 import numpy as np
 from itertools import combinations,product,permutations
 import tensorflow as tf
@@ -18,7 +17,9 @@ if gpus:
   except RuntimeError as e:
     # Memory growth must be set before GPUs have been initialized
     print(e)
-import mme
+import nmln
+from nmln.utils import ntp_dataset_triple
+
 
 
 inter_sample_burn = 1
@@ -83,20 +84,20 @@ def filter_triples(triples, domain):
 def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips, log_file):
 
     # Loading the dataset. Each split is a list of triples <h,r,t>
-    constants, predicates, ground, train, valid, test = datasets.ntp_dataset_triple(dataset)
+    constants, predicates, ground, train, valid, test = ntp_dataset_triple(dataset, "../data")
 
     np.random.seed(0)
     tf.random.set_seed(0)
 
 
     constants = [k for k in constants.values()]
-    d = mme.Domain("nations", num_constants=len(constants), constants=constants)
+    d = nmln.Domain("nations", num_constants=len(constants), constants=constants)
 
     predicates_list = []
     for p,k in predicates.items():
-        predicates_list.append(mme.Predicate(name=k, domains=(d,d)))
+        predicates_list.append(nmln.Predicate(name=k, domains=(d,d)))
 
-    o = mme.Ontology(domains=[d], predicates=predicates_list)
+    o = nmln.Ontology(domains=[d], predicates=predicates_list)
     MARG = np.zeros([o.linear_size()], dtype=np.float64)
     count_all = np.zeros([o.linear_size()], dtype=np.float64)
     testing = True
@@ -119,7 +120,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips,
     for _ in range(-1,100000):
 
         constants_small = np.random.choice(constants, size=n_sample, replace=False)
-        d_small = mme.Domain("nations", num_constants=len(constants_small), constants=constants_small)
+        d_small = nmln.Domain("nations", num_constants=len(constants_small), constants=constants_small)
         num_variables = (len(constants_small) ** 2) * len(predicates)
 
         ground_small = filter_triples(ground, d_small)
@@ -134,9 +135,9 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips,
 
         predicates_list = []
         for p, k in predicates.items():
-            predicates_list.append(mme.Predicate(name=k, domains=(d_small, d_small)))
+            predicates_list.append(nmln.Predicate(name=k, domains=(d_small, d_small)))
 
-        o_small = mme.Ontology(domains=[d_small], predicates=predicates_list)
+        o_small = nmln.Ontology(domains=[d_small], predicates=predicates_list)
 
 
 
@@ -167,7 +168,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips,
         else:
             P = KBCPotentialNoConstantEmb(3, o_small, hidden_layers, len(constants_small))
         P.beta = 1.
-        sampler = mme.inference.FactorizedGPUGibbsSamplerBool(potential=P,
+        sampler = nmln.inference.FactorizedGPUGibbsSamplerBool(potential=P,
                                                               factorization_ids=ids_of,
                                                               factorization_idx=idx_of,
                                                               num_examples=1,
@@ -178,7 +179,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips,
 
 
         if embedding_size <= 0:
-            sampler_test = mme.inference.FactorizedGPUGibbsSamplerBool(potential=P,
+            sampler_test = nmln.inference.FactorizedGPUGibbsSamplerBool(potential=P,
                                                                   factorization_ids=ids_of,
                                                                   factorization_idx=idx_of,
                                                                   num_examples=1,

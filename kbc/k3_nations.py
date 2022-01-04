@@ -1,7 +1,6 @@
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-import datasets
 import numpy as np
 from itertools import combinations,product,permutations
 import tensorflow as tf
@@ -18,7 +17,9 @@ if gpus:
   except RuntimeError as e:
     # Memory growth must be set before GPUs have been initialized
     print(e)
-import mme
+import nmln
+from nmln.utils import ntp_dataset_triple
+
 
 
 inter_sample_burn = 1
@@ -42,7 +43,7 @@ class NTPLikeScoringFunction():
 def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips):
 
     # Loading the dataset. Each split is a list of triples <h,r,t>
-    constants, predicates, ground, train, valid, test = datasets.ntp_dataset_triple(dataset)
+    constants, predicates, ground, train, valid, test = ntp_dataset_triple(dataset, "../data")
     num_variables = (len(constants)**2) * len(predicates)
 
     np.random.seed(0)
@@ -50,13 +51,13 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips)
 
 
     constants = [k for k in constants.values()]
-    d = mme.Domain("nations", num_constants=len(constants), constants=constants)
+    d = nmln.Domain("nations", num_constants=len(constants), constants=constants)
 
     predicates_list = []
     for p,k in predicates.items():
-        predicates_list.append(mme.Predicate(name=k, domains=(d,d)))
+        predicates_list.append(nmln.Predicate(name=k, domains=(d,d)))
 
-    o = mme.Ontology(domains=[d], predicates=predicates_list)
+    o = nmln.Ontology(domains=[d], predicates=predicates_list)
 
 
     # Getting one-factors (interpretations and ids of relative k=3 fragments
@@ -90,7 +91,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips)
     else:
         P = KBCPotentialNoConstantEmb(3, o, hidden_layers, len(constants))
 
-    sampler = mme.inference.FactorizedGPUGibbsSamplerBool(potential=P,
+    sampler = nmln.inference.FactorizedGPUGibbsSamplerBool(potential=P,
                                                           factorization_ids=ids_of,
                                                           factorization_idx=idx_of,
                                                           num_examples=1,
@@ -101,7 +102,7 @@ def main(dataset, num_samples, embedding_size, p_noise, lr, hidden_layers,flips)
 
 
     if embedding_size <= 0:
-        sampler_test = mme.inference.FactorizedGPUGibbsSamplerBool(potential=P,
+        sampler_test = nmln.inference.FactorizedGPUGibbsSamplerBool(potential=P,
                                                               factorization_ids=ids_of,
                                                               factorization_idx=idx_of,
                                                               num_examples=1,

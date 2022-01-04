@@ -2,7 +2,7 @@ import numpy as np
 from itertools import combinations, permutations
 from collections import OrderedDict, defaultdict
 import random
-import mme
+import nmln
 import tensorflow as tf
 from typing import List, Tuple, Dict, Callable, Optional
 
@@ -278,7 +278,7 @@ def get_disconnected_indices_random_corruption(connected_fragment_dict, num_disc
     return np.reshape(disconnected_fragment_indices, [-1, 2])
 
 
-class KBCTractablePotential(mme.potentials.Potential):
+class KBCTractablePotential(nmln.potentials.Potential):
 
     def __init__(self, hidden_layers, num_constants, embedding_size, num_variables):
         super(KBCTractablePotential, self).__init__()
@@ -312,7 +312,7 @@ class KBCTractablePotential(mme.potentials.Potential):
         # return a
 
 
-class KBCPotential(mme.potentials.CountableGroundingPotential):
+class KBCPotential(nmln.potentials.CountableGroundingPotential):
 
         def __init__(self, k, ontology, hidden_layers, num_constants, embedding_size):
             super(KBCPotential, self).__init__()
@@ -351,7 +351,7 @@ class KBCPotential(mme.potentials.CountableGroundingPotential):
 
 
 
-class KBCPotentialNoConstantEmb(mme.potentials.CountableGroundingPotential):
+class KBCPotentialNoConstantEmb(nmln.potentials.CountableGroundingPotential):
 
         def __init__(self, k, ontology, hidden_layers, num_constants):
             super(KBCPotentialNoConstantEmb, self).__init__()
@@ -394,7 +394,7 @@ class KBCPotentialNoConstantEmb(mme.potentials.CountableGroundingPotential):
 
 
 
-class KBCTractablePotential2(mme.potentials.Potential):
+class KBCTractablePotential2(nmln.potentials.Potential):
 
     def __init__(self, hidden_layers, num_constants, embedding_size, num_variables, constants_embeddings=None,
                  dropout_rate=0.):
@@ -436,7 +436,7 @@ class KBCTractablePotential2(mme.potentials.Potential):
         # return a
 
 
-class KBCTractablePotentialWE(mme.potentials.Potential):
+class KBCTractablePotentialWE(nmln.potentials.Potential):
 
     def __init__(self, hidden_layers, num_constants, embedding_size, num_variables, bow, we):
         super(KBCTractablePotentialWE, self).__init__()
