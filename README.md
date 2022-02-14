@@ -1,9 +1,5 @@
 # Neural Markov Logic Networks
 
-This branch contains the code necessary to replicate the experiments in the paper.
-This brunch will differ from the master brunch where we will keep the updated version of the library.
-
-
 
 ## Installation
 
